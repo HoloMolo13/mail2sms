@@ -561,3 +561,29 @@ def test_open_mode_rate_limit_still_applies(tmp_path):
     relay, _ = make_relay(mails, tmp_path, runner, allowed_senders=frozenset(), secret_code=OPEN_CODE)
     relay.poll_once(relay.connect())
     assert len(runner.calls) == 1
+
+
+# ---------------------------------------------------------------- gmail label
+
+
+def test_system_label_rejected_in_config(tmp_path):
+    p = write_config(tmp_path, **{'label = ""': 'label = "Sent"'})
+    with pytest.raises(m.ConfigError) as e:
+        m.load_config(p)
+    assert "gmail.label" in str(e.value)
+
+
+def test_label_error_does_not_crash(tmp_path):
+    class LabelRefusingIMAP(FakeIMAP):
+        def uid(self, cmd, *args):
+            if cmd == "STORE" and args[1] == "+X-GM-LABELS":
+                raise m.imaplib.IMAP4.error("BAD Label name is not allowed")
+            return super().uid(cmd, *args)
+
+    runner = Runner()
+    relay, _ = make_relay({}, tmp_path, runner, gmail_label="whatever")
+    imap = LabelRefusingIMAP({b"1": raw_mail("[집-4821] 늦어요")})
+    relay.imap_factory = imap
+    assert relay.poll_once(relay.connect()) == 1
+    assert len(runner.calls) == 1
+    assert imap.flags[b"1"] == {"\\Seen"}

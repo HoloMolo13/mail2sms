@@ -40,6 +40,11 @@ log = logging.getLogger("mail2sms")
 PASSWORD_ENV = "MAIL2SMS_APP_PASSWORD"
 PLACEHOLDERS = {"CHANGE_ME", "you@gmail.com", "me@company.com", "01000000000"}
 MIN_OPEN_CODE_LEN = 8
+# Gmail refuses these as X-GM-LABELS values.
+GMAIL_SYSTEM_LABELS = {
+    "inbox", "sent", "draft", "drafts", "spam", "trash", "starred",
+    "important", "unread", "chat", "chats", "all mail", "allmail",
+}
 PHONE_RE = re.compile(r"^\+?[0-9]{6,15}$")
 
 
@@ -167,6 +172,11 @@ def validate_config(cfg: Config) -> None:
         problems.append("poll_interval_sec 는 10 이상이어야 합니다")
     if cfg.gmail_label and not cfg.gmail_label.isascii():
         problems.append("gmail.label 은 영문/숫자로 지정하세요")
+    elif cfg.gmail_label.lower() in GMAIL_SYSTEM_LABELS or '"' in cfg.gmail_label:
+        problems.append(
+            f"gmail.label 에 Gmail 기본 라벨({cfg.gmail_label})은 쓸 수 없습니다. "
+            '"mail2sms" 같은 새 이름을 쓰거나 비워 두세요'
+        )
     if problems:
         raise ConfigError("; ".join(problems))
 
@@ -518,7 +528,13 @@ class Relay:
     def mark_done(self, conn, uid: bytes) -> None:
         conn.uid("STORE", uid, "+FLAGS", "(\\Seen)")
         if self.cfg.gmail_label:
-            conn.uid("STORE", uid, "+X-GM-LABELS", f'("{self.cfg.gmail_label}")')
+            # A bad label must not stop the relay: the mail is already read.
+            try:
+                typ, data = conn.uid("STORE", uid, "+X-GM-LABELS", f'("{self.cfg.gmail_label}")')
+                if typ != "OK":
+                    log.warning("label %r not applied: %s", self.cfg.gmail_label, data)
+            except imaplib.IMAP4.error as e:
+                log.warning("label %r not applied: %s", self.cfg.gmail_label, e)
 
     def run_forever(self, sleep: Callable[[float], None] = time.sleep) -> None:
         backoff = self.cfg.poll_interval_sec
