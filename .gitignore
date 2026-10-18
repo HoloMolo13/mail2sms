@@ -1,0 +1,9 @@
+config.toml
+app_password
+*.log
+logs/
+state.json
+state.tmp
+.venv/
+__pycache__/
+.pytest_cache/

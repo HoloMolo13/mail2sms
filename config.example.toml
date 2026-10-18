@@ -1,0 +1,50 @@
+# mail2sms 설정 예시
+# 복사해서 쓰세요:  cp config.example.toml ~/.config/mail2sms/config.toml
+# CHANGE_ME / 예시 주소 / 01000000000 이 남아 있으면 프로그램이 시작을 거부합니다.
+
+# true 이면 문자를 실제로 보내지 않고 로그만 남깁니다. 충분히 시험한 뒤 false 로 바꾸세요.
+dry_run = true
+
+# 메일 확인 주기(초)
+poll_interval_sec = 60
+
+[imap]
+host = "imap.gmail.com"
+port = 993
+user = "you@gmail.com"          # 폰이 확인할 본인 Gmail 주소
+mailbox = "INBOX"
+lookback_days = 2               # 최근 며칠 안의 읽지 않은 메일만 봅니다
+# 앱 비밀번호: 환경변수 MAIL2SMS_APP_PASSWORD 가 있으면 그것을 쓰고,
+# 없으면 이 파일(권한 600 필수)에서 읽습니다.
+password_file = "~/.config/mail2sms/app_password"
+
+[filter]
+# 이 주소에서 온 메일만 처리합니다(회사 메일 주소 등). 소문자로 비교합니다.
+allowed_senders = ["me@company.com"]
+# 제목이 "[접두어-비밀코드]" 로 시작해야 합니다. 예: "[집-4821] 오늘 늦어요"
+subject_prefix = "집"
+secret_code = "CHANGE_ME"       # 4자 이상, 남이 추측하기 어려운 값
+# true 면 Gmail이 붙인 Authentication-Results 에 dmarc=pass 가 있어야 처리합니다.
+# 회사 메일이 DMARC 를 통과하는지 확인한 뒤 켜세요.
+require_dmarc_pass = false
+
+[sms]
+recipient = "01000000000"       # 받는 사람 번호(고정). 하이픈은 자동으로 빠집니다.
+max_chars = 70                  # 문구 최대 글자 수
+max_per_hour = 5                # 한 시간에 최대 전송 건수
+min_interval_sec = 60           # 전송 사이 최소 간격(초)
+timeout_sec = 60
+
+[gmail]
+# 처리한 메일에 붙일 Gmail 라벨(영문). 비워 두면 라벨을 붙이지 않습니다.
+label = ""
+
+[reply]
+# true 면 처리 결과("보냈음"/"거부됨"/"전송 실패")를 보낸 사람에게 회신합니다.
+enabled = false
+smtp_host = "smtp.gmail.com"
+smtp_port = 465
+
+[log]
+file = "~/mail2sms/logs/mail2sms.log"
+state_file = "~/mail2sms/state.json"   # 전송 제한 기록

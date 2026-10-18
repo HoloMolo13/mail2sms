@@ -1,0 +1,2 @@
+# Termux가 CRLF 스크립트를 실행하지 못하므로 항상 LF로 저장
+* text=auto eol=lf
