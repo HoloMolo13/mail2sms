@@ -37,6 +37,9 @@ sed "s#__APP_DIR__#$APP_DIR#g" "$APP_DIR/termux/boot-start-mail2sms.sh" \
     > "$HOME/.termux/boot/start-mail2sms"
 chmod 700 "$HOME/.termux/boot/start-mail2sms"
 
+echo "== Termux:Widget 버튼 설치"
+bash "$APP_DIR/scripts/install-widget.sh" >/dev/null
+
 cat <<MSG
 
 설치 끝. 남은 일:
@@ -48,4 +51,6 @@ cat <<MSG
  5. 안드로이드 설정 > 애플리케이션 > Termux, Termux:API, Termux:Boot
     > 배터리 > '제한 없음'(배터리 최적화 해제)로 바꾸세요.
  6. Termux:Boot 앱을 한 번 열어 두면 재부팅 후 자동으로 시작됩니다.
+ 7. (선택) Termux:Widget 앱을 설치하고 홈 화면에 위젯을 놓으면
+    '문자릴레이' 버튼으로 켜고 끌 수 있습니다.
 MSG

@@ -11,4 +11,8 @@ fi
 
 nohup bash "$APP_DIR/scripts/run.sh" >>"$APP_DIR/logs/runner.log" 2>&1 &
 echo $! > "$PIDFILE"
+# 실행 중임을 알림창에 띄우고, 알림의 '끄기' 버튼으로 끌 수 있게 합니다.
+termux-notification --id mail2sms --ongoing --priority low \
+    --title "문자 릴레이 실행 중" --content "메일을 확인해 문자를 보냅니다" \
+    --button1 "끄기" --button1-action "bash $APP_DIR/scripts/stop.sh" 2>/dev/null || true
 echo "시작했습니다 (pid $!). 로그: tail -f $APP_DIR/logs/mail2sms.log"

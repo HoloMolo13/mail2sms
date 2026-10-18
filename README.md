@@ -166,6 +166,20 @@ tail -f ~/mail2sms/logs/mail2sms.log
 
 Termux:Boot 앱을 한 번 열어 두면 재부팅 후 자동으로 시작됩니다.
 
+실행 중에는 알림창에 "문자 릴레이 실행 중" 알림이 뜨고, 알림의 **끄기** 버튼으로 끌 수 있습니다.
+
+### 홈 화면 켜기/끄기 버튼 (Termux:Widget)
+
+폰을 두고 들어갈 때만 켜 두면 배터리를 아낄 수 있습니다.
+
+1. **Termux:Widget** 앱을 Termux와 같은 곳(F-Droid 등)에서 설치합니다.
+2. Termux에서 `bash ~/mail2sms/scripts/install-widget.sh` 를 실행합니다(`install.sh` 가 이미 해 둡니다).
+3. 홈 화면을 길게 눌러 **위젯 → Termux:Widget** 을 놓습니다.
+4. 위젯의 **문자릴레이** 를 누를 때마다 켜짐/꺼짐이 바뀌고 화면 아래에 잠깐 표시됩니다.
+   목록에 안 보이면 위젯의 새로고침 버튼을 누르세요.
+
+재부팅 때 자동으로 켜지지 않게 하려면 `rm ~/.termux/boot/start-mail2sms` 를 실행하세요.
+
 ## 설정 항목 전체
 
 `config.example.toml` 에 주석으로 설명되어 있습니다. 주요 선택 기능:

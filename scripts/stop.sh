@@ -11,3 +11,4 @@ else
     echo "실행 중이 아닙니다."
 fi
 termux-wake-unlock
+termux-notification-remove mail2sms 2>/dev/null || true
