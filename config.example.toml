@@ -19,11 +19,14 @@ lookback_days = 2               # 최근 며칠 안의 읽지 않은 메일만 �
 password_file = "~/.config/mail2sms/app_password"
 
 [filter]
-# 이 주소에서 온 메일만 처리합니다(회사 메일 주소 등). 소문자로 비교합니다.
-allowed_senders = ["me@company.com"]
-# 제목이 "[접두어-비밀코드]" 로 시작해야 합니다. 예: "[집-4821] 오늘 늦어요"
+# 제목이 "[접두어-비밀코드]" 로 시작하는 메일만 처리합니다. 예: "[집-k7Qm29xa] 오늘 늦어요"
 subject_prefix = "집"
-secret_code = "CHANGE_ME"       # 4자 이상, 남이 추측하기 어려운 값
+# 비밀 코드. allowed_senders 가 비어 있으면 이것이 유일한 보호 장치이므로 8자 이상이어야 합니다.
+# 영문 대소문자와 숫자를 섞어 길게 만들고, 남에게 보이지 않게 하세요.
+secret_code = "CHANGE_ME"
+# (선택) 이 주소에서 온 메일만 처리합니다. 비워 두면 어느 주소에서 보내든 제목만 맞으면 처리합니다.
+# 예: allowed_senders = ["me@company.com"]   (이 경우 비밀 코드는 4자 이상이면 됩니다)
+allowed_senders = []
 # true 면 Gmail이 붙인 Authentication-Results 에 dmarc=pass 가 있어야 처리합니다.
 # 회사 메일이 DMARC 를 통과하는지 확인한 뒤 켜세요.
 require_dmarc_pass = false

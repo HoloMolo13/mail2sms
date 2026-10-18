@@ -435,15 +435,14 @@ def test_example_config_is_rejected_until_edited():
     with pytest.raises(m.ConfigError) as e:
         m.load_config(EXAMPLE)
     msg = str(e.value)
-    for key in ("imap.user", "allowed_senders", "secret_code", "recipient"):
+    for key in ("imap.user", "secret_code", "recipient"):
         assert key in msg
 
 
 def write_config(tmp_path, **repl):
     text = EXAMPLE.read_text(encoding="utf-8")
     text = text.replace('"you@gmail.com"', '"relay@gmail.com"')
-    text = text.replace('["me@company.com"]', '["Boss.Me@work.co.kr"]')
-    text = text.replace('"CHANGE_ME"', '"4821"')
+    text = text.replace('"CHANGE_ME"', '"k7Qm29xaP4"')
     text = text.replace('"01000000000"', '"010-1234-5678"')
     for a, b in repl.items():
         text = text.replace(a, b)
@@ -456,8 +455,8 @@ def test_load_edited_config(tmp_path):
     cfg = m.load_config(write_config(tmp_path))
     assert cfg.dry_run is True  # safe default
     assert cfg.recipient == "01012345678"
-    assert cfg.allowed_senders == frozenset({"boss.me@work.co.kr"})
-    assert cfg.tag == "[집-4821]"
+    assert cfg.allowed_senders == frozenset()  # default: any sender
+    assert cfg.tag == "[집-k7Qm29xaP4]"
     assert cfg.poll_interval_sec == 60
 
 
@@ -488,3 +487,77 @@ def test_password_missing(monkeypatch):
     monkeypatch.delenv(m.PASSWORD_ENV, raising=False)
     with pytest.raises(m.ConfigError):
         m.load_password(make_cfg())
+
+
+# ---------------------------------------------------------------- open mode (no sender allowlist)
+
+OPEN_CODE = "k7Qm29xaP4"
+
+
+def test_example_config_has_empty_allowlist_and_no_sender_error():
+    with pytest.raises(m.ConfigError) as e:
+        m.load_config(EXAMPLE)
+    msg = str(e.value)
+    assert "allowed_senders" not in msg.replace("allowed_senders 가 비어 있으면", "")
+
+
+def test_open_mode_requires_long_code(tmp_path):
+    with pytest.raises(m.ConfigError) as e:
+        m.load_config(write_config(tmp_path, **{'"k7Qm29xaP4"': '"4821"'}))
+    assert "8자" in str(e.value)
+
+
+def test_allowlist_mode_allows_short_code(tmp_path):
+    p = write_config(
+        tmp_path,
+        **{'"k7Qm29xaP4"': '"4821"', "allowed_senders = []": 'allowed_senders = ["Boss.Me@work.co.kr"]'},
+    )
+    cfg = m.load_config(p)
+    assert cfg.allowed_senders == frozenset({"boss.me@work.co.kr"})
+    assert cfg.secret_code == "4821"
+
+
+def test_open_mode_accepts_any_sender_with_code():
+    cfg = make_cfg(allowed_senders=frozenset(), secret_code=OPEN_CODE)
+    d = m.evaluate(m.parse_message(raw_mail(f"[집-{OPEN_CODE}] 늦어요", sender=OTHER)), cfg)
+    assert d.action == m.ACCEPT and d.text == "늦어요"
+
+
+def test_open_mode_still_ignores_untagged_mail():
+    cfg = make_cfg(allowed_senders=frozenset(), secret_code=OPEN_CODE)
+    d = m.evaluate(m.parse_message(raw_mail("광고", sender=OTHER)), cfg)
+    assert d.action == m.IGNORE
+
+
+def test_open_mode_wrong_code_no_reply_right_code_reply(tmp_path):
+    mails = {
+        b"1": raw_mail("[집-guessguess] 장난", sender=OTHER),
+        b"2": raw_mail("광고", sender=OTHER),
+        b"3": raw_mail(f"[집-{OPEN_CODE}] 오늘 늦어요", sender="anyone@else.org"),
+    }
+    runner = Runner()
+    relay, imap = make_relay(
+        mails, tmp_path, runner,
+        allowed_senders=frozenset(), secret_code=OPEN_CODE, reply_enabled=True,
+    )
+    relay.poll_once(relay.connect())
+    assert [c[0][3] for c in runner.calls] == ["오늘 늦어요"]
+    assert imap.flags[b"1"] == {"\\Seen"}  # wrong code: marked read
+    assert imap.flags[b"2"] == set()
+    assert imap.flags[b"3"] == {"\\Seen"}
+    assert [str(r["To"]) for r in FakeSMTP.sent] == ["anyone@else.org"]
+    assert "보냈음" in str(FakeSMTP.sent[0]["Subject"])
+
+
+def test_allowlist_mode_wrong_code_still_replies(tmp_path):
+    relay, imap = make_relay({b"1": raw_mail("[집-0000] x")}, tmp_path, reply_enabled=True)
+    relay.poll_once(relay.connect())
+    assert len(FakeSMTP.sent) == 1 and "거부됨" in str(FakeSMTP.sent[0]["Subject"])
+
+
+def test_open_mode_rate_limit_still_applies(tmp_path):
+    mails = {str(i).encode(): raw_mail(f"[집-{OPEN_CODE}] m{i}", sender=f"u{i}@x.com") for i in range(1, 4)}
+    runner = Runner()
+    relay, _ = make_relay(mails, tmp_path, runner, allowed_senders=frozenset(), secret_code=OPEN_CODE)
+    relay.poll_once(relay.connect())
+    assert len(runner.calls) == 1

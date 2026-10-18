@@ -39,6 +39,7 @@ log = logging.getLogger("mail2sms")
 
 PASSWORD_ENV = "MAIL2SMS_APP_PASSWORD"
 PLACEHOLDERS = {"CHANGE_ME", "you@gmail.com", "me@company.com", "01000000000"}
+MIN_OPEN_CODE_LEN = 8
 PHONE_RE = re.compile(r"^\+?[0-9]{6,15}$")
 
 
@@ -54,6 +55,7 @@ class ConfigError(Exception):
 @dataclass
 class Config:
     imap_user: str
+    # Empty = any sender; then the secret code is the only check.
     allowed_senders: frozenset[str]
     subject_prefix: str
     secret_code: str
@@ -110,7 +112,8 @@ def load_config(path: str | Path) -> Config:
         cfg = Config(
             imap_user=str(imap["user"]).strip(),
             allowed_senders=frozenset(
-                str(s).strip().lower() for s in flt["allowed_senders"]
+                str(s).strip().lower() for s in flt.get("allowed_senders", [])
+                if str(s).strip()
             ),
             subject_prefix=_nfc(str(flt["subject_prefix"]).strip()),
             secret_code=_nfc(str(flt["secret_code"]).strip()),
@@ -145,12 +148,15 @@ def validate_config(cfg: Config) -> None:
     problems = []
     if not cfg.imap_user or cfg.imap_user in PLACEHOLDERS:
         problems.append("imap.user 를 본인 Gmail 주소로 바꾸세요")
-    if not cfg.allowed_senders or cfg.allowed_senders & PLACEHOLDERS:
-        problems.append("filter.allowed_senders 를 실제 보낼 주소로 바꾸세요")
     if not cfg.subject_prefix or "]" in cfg.subject_prefix or "-" in cfg.subject_prefix:
         problems.append("filter.subject_prefix 는 비어 있지 않고 ']' '-' 가 없어야 합니다")
     if cfg.secret_code in PLACEHOLDERS or len(cfg.secret_code) < 4 or "]" in cfg.secret_code:
         problems.append("filter.secret_code 를 4자 이상(']' 제외)의 비밀 코드로 바꾸세요")
+    elif not cfg.allowed_senders and len(cfg.secret_code) < MIN_OPEN_CODE_LEN:
+        problems.append(
+            f"filter.allowed_senders 가 비어 있으면(누구나 보낼 수 있음) filter.secret_code 는 "
+            f"{MIN_OPEN_CODE_LEN}자 이상이어야 합니다"
+        )
     if cfg.recipient in PLACEHOLDERS or not PHONE_RE.match(cfg.recipient):
         problems.append("sms.recipient 를 받는 사람 번호(숫자만)로 바꾸세요")
     if cfg.max_chars < 1:
@@ -264,6 +270,9 @@ class Decision:
     action: str
     reason: str = ""
     text: str = ""
+    # False when we can't trust the sender address enough to mail it back
+    # (no sender allowlist and the code didn't match): avoids backscatter.
+    reply: bool = True
 
 
 def _dmarc_pass(auth_results: str) -> bool:
@@ -271,8 +280,11 @@ def _dmarc_pass(auth_results: str) -> bool:
 
 
 def evaluate(mail: ParsedMail, cfg: Config) -> Decision:
-    if mail.from_count != 1 or mail.sender not in cfg.allowed_senders:
+    if mail.from_count != 1:
+        return Decision(IGNORE, "not exactly one sender")
+    if cfg.allowed_senders and mail.sender not in cfg.allowed_senders:
         return Decision(IGNORE, "sender not allowed")
+    trusted_sender = bool(cfg.allowed_senders)
 
     subject = mail.subject
     if not subject.startswith(cfg.tag_start):
@@ -280,10 +292,10 @@ def evaluate(mail: ParsedMail, cfg: Config) -> Decision:
 
     head = subject[: len(cfg.tag)]
     if not hmac.compare_digest(head.encode("utf-8"), cfg.tag.encode("utf-8")):
-        return Decision(REJECT, "wrong secret code")
+        return Decision(REJECT, "wrong secret code", reply=trusted_sender)
 
     if cfg.require_dmarc_pass and not _dmarc_pass(mail.authentication_results):
-        return Decision(REJECT, "DMARC not passed")
+        return Decision(REJECT, "DMARC not passed", reply=trusted_sender)
 
     text = subject[len(cfg.tag):].strip() or mail.first_line
     text = make_sms_text(text, cfg.max_chars)
@@ -496,7 +508,7 @@ class Relay:
                 log.error("uid %s from %s: sms failed: %s", uid.decode(), mail.sender, detail)
 
         self.mark_done(conn, uid)
-        if self.cfg.reply_enabled:
+        if self.cfg.reply_enabled and decision.reply:
             try:
                 send_reply(self.cfg, self.password, build_reply(self.cfg, mail, status, detail), self.smtp_factory)
             except (smtplib.SMTPException, OSError) as e:
